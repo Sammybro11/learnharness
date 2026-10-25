@@ -40,8 +40,9 @@
  */
 
 import {
+	ALL_PROVIDER_KEYS,
+	APP_PROVIDER_KEYS,
 	AUTH_KEYS,
-	AUTH_PROVIDER_KEYS,
 	AUTH_PROVIDER_ENV_VARS,
 	type AuthKeyInfo,
 	type AuthKeyStatus,
@@ -51,6 +52,7 @@ import {
 	maskKey,
 	validateKeyShape,
 } from "../core/auth-keys.ts";
+import { refreshProviderModels } from "../agent/models.ts";
 import { authStore } from "../store/auth.ts";
 import { isSubscriptionProvider, subscriptionConnected } from "../agent/subscription-connections.ts";
 
@@ -78,12 +80,12 @@ export function isWritableAuthKey(id: string): boolean {
 	return isKnownAuthKey(id) || isProviderEnvVar(id);
 }
 
-/** The settings page's provider dropdown: every pi-ai provider that takes
- *  a plain key ({id, envVar, label} — no-drift-pinned, see the table's doc
- *  in core/auth-keys.ts and tests/auth-provider-keys.test.ts). Sorted by
- *  id for a stable payload. */
+/** The settings page's provider dropdown: every provider that takes a
+ *  plain key — pi-ai's builtin table plus the app's own (hyper), see
+ *  ALL_PROVIDER_KEYS in core/auth-keys.ts. Sorted by id for a stable
+ *  payload. */
 export function providerKeyList() {
-	return [...AUTH_PROVIDER_KEYS].sort((a, b) => a.id.localeCompare(b.id));
+	return [...ALL_PROVIDER_KEYS].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** The fresh-user switch (owner, interlude 2026-09-22): env keys are
@@ -108,7 +110,7 @@ export function initAuthEnv(): void {
 		// Provider env vars are managed names too (provider-keys interlude):
 		// an env-exported OPENAI_API_KEY with a file copy gets honest shadow
 		// semantics, exactly like the curated vars.
-		...AUTH_PROVIDER_KEYS.map((p) => p.envVar),
+		...ALL_PROVIDER_KEYS.map((p) => p.envVar),
 	]);
 	if (envKeysIgnored()) {
 		// THE FRESH-USER SWITCH: delete every managed env var (re-run on
@@ -198,11 +200,11 @@ export function keyValue(id: string): string | undefined {
  * 2026-09-25): would this provider's key be present at request time?
  * Reads through keyValue — the SAME env-first lookup pi-ai performs
  * natively at every request — so an env-shadowed key counts as present
- * (gate by what would run). Providers absent from AUTH_PROVIDER_KEYS take
+ * (gate by what would run). Providers absent from ALL_PROVIDER_KEYS take
  * no key at all: nothing to gate, present by definition. */
 export function providerKeyPresent(provider: string): boolean {
 	if (isSubscriptionProvider(provider)) return subscriptionConnected(provider);
-	const info = AUTH_PROVIDER_KEYS.find((p) => p.id === provider);
+	const info = ALL_PROVIDER_KEYS.find((p) => p.id === provider);
 	return info ? keyValue(info.envVar) !== undefined : true;
 }
 
@@ -222,6 +224,11 @@ export function saveKey(id: string, value: string): { ok: true; status: AuthKeyS
 		process.env[id] = trimmed;
 		record.fillGap.add(id);
 	}
+	// An app-registered provider (hyper) has no static catalog — its models
+	// only appear after a network fetch. Fire-and-forget so a refresh failure
+	// (offline) never fails the save that earned it.
+	const appProvider = APP_PROVIDER_KEYS.find((p) => p.envVar === id);
+	if (appProvider) void refreshProviderModels(appProvider.id).catch(() => {});
 	// validateKeyShape guarantees catalog membership, so the row exists.
 	return { ok: true, status: keyStatuses().find((s) => s.id === id)! };
 }

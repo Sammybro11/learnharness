@@ -17,6 +17,7 @@ import { chatGPTStream } from "./chatgpt-stream.ts";
 import type { ChatGPTDispatchLifecycle } from "./chatgpt-request-cycle.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
+import { HYPER_PROVIDER_ID, hyperProvider } from "./hyper-provider.ts";
 
 /** App identity is immutable and shared by Models and every native Agent.
  * Agent's default Pi attribution otherwise overrides the Models identity. */
@@ -57,13 +58,26 @@ let collection: ReturnType<typeof createModels> | undefined;
  *  the environment (the keys seam reflects file-saved keys into env), and
  *  a provider with no key simply fails its stream with "not configured" —
  *  honest, late, and unreachable through the picker, which gates on
- *  keyPresent. */
+ *  keyPresent.
+ *
+ *  Plus the app's own provider (hyper, src/agent/hyper-provider.ts): pi-ai
+ *  ships no catalog for it, so its model list is fetched at startup and
+ *  after each key save. Fire-and-forget and failure-tolerant: offline, the
+ *  provider simply stays empty. */
 export function piModels() {
 	if (!collection) {
 		collection = createModels({ identity: APP_IDENTITY });
 		for (const provider of builtinProviders()) collection.setProvider(provider);
+		collection.setProvider(hyperProvider());
+		void collection.refresh({ providers: [HYPER_PROVIDER_ID] }).catch(() => {});
 	}
 	return collection;
+}
+
+/** Re-fetch one dynamic provider's model list (the key-save hook's entry
+ *  point — a saved key never waits on the network). */
+export function refreshProviderModels(provider: string): Promise<void> {
+	return piModels().refresh({ providers: [provider] }).then(() => {});
 }
 
 /** OpenRouter API key (BYOK); tests never read this — they inject engines. */

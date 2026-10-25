@@ -122,14 +122,31 @@ export const AUTH_PROVIDER_KEYS: readonly AuthProviderInfo[] = [
 	{ id: "zai-coding-cn", envVar: "ZAI_CODING_CN_API_KEY", label: "Z.AI Coding CN" },
 ] as const;
 
+/**
+ * APP-REGISTERED PROVIDER KEYS (hyper, 2026-10): providers this app adds
+ * itself. pi-ai has no catalog for them, so they are DELIBERATELY absent
+ * from AUTH_PROVIDER_KEYS — that table is deep-equal pinned against pi-ai's
+ * own provider→env-var table (tests/auth-provider-keys.test.ts), and adding
+ * an app-only row there would break the pin. Every UI/API enumeration reads
+ * ALL_PROVIDER_KEYS instead; AUTH_PROVIDER_KEYS and AUTH_PROVIDER_ENV_VARS
+ * stay builtin-only.
+ */
+export const APP_PROVIDER_KEYS: readonly AuthProviderInfo[] = [
+	{ id: "hyper", envVar: "HYPER_API_KEY", label: "Hyper" },
+] as const;
+
+/** Every provider key this app knows: pi-ai's builtin table + our own. */
+export const ALL_PROVIDER_KEYS: readonly AuthProviderInfo[] = [...AUTH_PROVIDER_KEYS, ...APP_PROVIDER_KEYS];
+
 /** Every distinct env var a model-provider key rides in (the write side's
  *  writability check — see isProviderEnvVar below; also drives which
  *  PRESENT provider vars surface as status rows). */
 export const AUTH_PROVIDER_ENV_VARS: ReadonlySet<string> = new Set(AUTH_PROVIDER_KEYS.map((p) => p.envVar));
 
-/** Is this env-var name the key of SOME pi-ai model provider? */
+/** Is this env-var name the key of SOME model provider — a pi-ai builtin
+ *  (AUTH_PROVIDER_ENV_VARS) or an app-registered one (APP_PROVIDER_KEYS)? */
 export function isProviderEnvVar(envVar: string): boolean {
-	return AUTH_PROVIDER_ENV_VARS.has(envVar);
+	return AUTH_PROVIDER_ENV_VARS.has(envVar) || APP_PROVIDER_KEYS.some((p) => p.envVar === envVar);
 }
 
 /** Shape-check result: ok, or a 400-ready message naming the expectation. */
